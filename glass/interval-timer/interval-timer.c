@@ -24,13 +24,26 @@ typedef struct {
     uint32_t last_lap_ms;
     uint16_t lap_count;
     uint32_t refresh_elapsed_ms;
-    uint8_t language; /* 0 = French (default), 1 = English */
+    uint8_t language; /* 0=fr 1=en 2=es 3=it 4=de 5=zh-CN */
 } timer_t;
 
-/* Picks the French or English string depending on the detected UI locale. */
-#define L(fr_str, en_str) (tm.language != 0U ? (en_str) : (fr_str))
+/* Picks the string for the detected UI locale. */
+#define L(fr_str, en_str, es_str, it_str, de_str, zh_str) \
+    (tm.language == 1U ? (en_str) : tm.language == 2U ? (es_str) : \
+     tm.language == 3U ? (it_str) : tm.language == 4U ? (de_str) : \
+     tm.language == 5U ? (zh_str) : (fr_str))
 
 static timer_t tm;
+
+static uint8_t timer_detect_language(const char *locale)
+{
+    if (locale[0] == 'e' && locale[1] == 'n') return 1U;
+    if (locale[0] == 'e' && locale[1] == 's') return 2U;
+    if (locale[0] == 'i' && locale[1] == 't') return 3U;
+    if (locale[0] == 'd' && locale[1] == 'e') return 4U;
+    if (locale[0] == 'z' && locale[1] == 'h') return 5U;
+    return 0U;
+}
 
 #define number gm_plugin_lvgl_style_number
 #define color gm_plugin_lvgl_style_color
@@ -86,29 +99,33 @@ static void refresh_display(void)
     tm.ui->label_set_text(tm.total_label, text);
 
     if (tm.running) {
-        tm.ui->label_set_text(tm.state_label, L("En cours", "Running"));
+        tm.ui->label_set_text(tm.state_label, L("En cours", "Running", "En marcha", "In corso", "Läuft", "进行中"));
         set_style(tm.state_label, GM_PLUGIN_LVGL_STYLE_TEXT_COLOR, color(0xF0));
     } else if (tm.total_ms == 0U) {
-        tm.ui->label_set_text(tm.state_label, L("Pret", "Ready"));
+        tm.ui->label_set_text(tm.state_label, L("Pret", "Ready", "Listo", "Pronto", "Bereit", "准备"));
         set_style(tm.state_label, GM_PLUGIN_LVGL_STYLE_TEXT_COLOR, color(0x90));
     } else {
-        tm.ui->label_set_text(tm.state_label, L("En pause", "Paused"));
+        tm.ui->label_set_text(tm.state_label, L("En pause", "Paused", "En pausa", "In pausa", "Pausiert", "暂停"));
         set_style(tm.state_label, GM_PLUGIN_LVGL_STYLE_TEXT_COLOR, color(0xC0));
     }
 
     if (tm.lap_count == 0U) {
-        tm.ui->label_set_text(tm.lap_label, L("Aucun tour", "No lap yet"));
+        tm.ui->label_set_text(tm.lap_label, L("Aucun tour", "No lap yet", "Sin vueltas", "Nessun giro", "Noch keine Runde", "暂无计次"));
     } else {
         char lap_time[MAX_FORMAT];
         format_time(lap_time, sizeof(lap_time), tm.last_lap_ms);
-        tm.libc->snprintf(text, sizeof(text), L("Tour %u - %s", "Lap %u - %s"),
+        tm.libc->snprintf(text, sizeof(text), L("Tour %u - %s", "Lap %u - %s", "Vuelta %u - %s", "Giro %u - %s", "Runde %u - %s", "计次 %u - %s"),
                           (unsigned int)tm.lap_count, lap_time);
         tm.ui->label_set_text(tm.lap_label, text);
     }
 
     tm.ui->label_set_text(tm.hint_label,
         L("Tete haut: demarrer   Tete bas: pause",
-          "Head up: start   Head down: pause"));
+          "Head up: start   Head down: pause",
+          "Cabeza arriba: iniciar   Cabeza abajo: pausa",
+          "Testa su: avvia   Testa giù: pausa",
+          "Kopf hoch: Start   Kopf runter: Pause",
+          "抬头：开始   低头：暂停"));
 }
 
 static void add_lap(void)
@@ -147,9 +164,8 @@ static gm_plugin_result_t timer_start(void *context)
 
     tm.language = 0U;
     if (tm.host->locale_get != 0 &&
-        tm.host->locale_get(locale) == GM_PLUGIN_OK &&
-        locale[0] == 'e' && locale[1] == 'n')
-        tm.language = 1U;
+        tm.host->locale_get(locale) == GM_PLUGIN_OK)
+        tm.language = timer_detect_language(locale);
 
     if (tm.host->display_get_info(&display) != GM_PLUGIN_OK ||
         display.width < 80U || display.height < 120U)
